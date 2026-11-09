@@ -46,7 +46,8 @@ const PT = {
   "wa.intro": "Olá! Gostaria de um orçamento:", "wa.name": "Nome", "wa.phone": "Telefone", "wa.email": "E-mail",
   "wa.service": "Serviço", "wa.date": "Data", "wa.msg": "Detalhes",
 };
-Object.assign(PT, window.PAGE_PT || {});
+// Legal pages
+Object.assign(PT, { back: "← Início", terms: "Termos de Uso", privacy: "Política de Privacidade" });
 const EN_EXTRA = {
   "f.err": "Please fill in name, phone, a valid email, service and date.",
   "wa.intro": "Hi! I'd like a cleaning quote:", "wa.name": "Name", "wa.phone": "Phone", "wa.email": "Email",
@@ -66,7 +67,10 @@ function setLang(next) {
   document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
-  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("is-active", b.dataset.lang === lang));
+  document.querySelectorAll("[data-lang]").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.lang === lang);
+    b.setAttribute("aria-pressed", String(b.dataset.lang === lang));
+  });
   document.querySelectorAll("[data-only]").forEach((el) => { el.hidden = el.dataset.only !== lang; });
   try { localStorage.setItem("fc-lang", lang); } catch {}
 }
@@ -74,8 +78,8 @@ document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("clic
 try { const saved = localStorage.getItem("fc-lang"); if (saved) setLang(saved); } catch {}
 
 // Header + mobile menu
-const header = document.querySelector(".header");
-const onScroll = () => header.classList.toggle("is-scrolled", window.scrollY > 20);
+const header = document.querySelector(".nav");
+const onScroll = () => header && header.classList.toggle("is-scrolled", window.scrollY > 8);
 window.addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
@@ -93,7 +97,7 @@ if (menuBtn && nav) {
 }
 
 // Reveal on scroll
-const revealEls = document.querySelectorAll(".section__head, .card, .split > *, .steps li, .panel, .quote__grid > *");
+const revealEls = document.querySelectorAll(".head, .tile, .why > *, .steps li, .card, .quote > *, .hero__media");
 revealEls.forEach((el) => el.classList.add("reveal"));
 const io = new IntersectionObserver((entries) => {
   entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); } });
@@ -104,15 +108,30 @@ revealEls.forEach((el) => io.observe(el));
 const form = document.getElementById("quoteForm");
 if (form) {
   const dateInput = form.querySelector('[name="date"]');
-  dateInput.min = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  dateInput.min = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+  // Validate each field; mark invalid ones so the user sees exactly what's missing.
+  const rules = {
+    name: (v) => v.trim().length >= 2,
+    phone: (v) => v.replace(/\D/g, "").length >= 7,
+    email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
+    service: (v) => !!v,
+    date: (v) => !!v,
+  };
+  const check = (el) => {
+    const ok = rules[el.name] ? rules[el.name](el.value) : true;
+    el.setAttribute("aria-invalid", String(!ok));
+    return ok;
+  };
+  Object.keys(rules).forEach((n) => form[n].addEventListener("blur", () => { if (form[n].value) check(form[n]); }));
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(form));
-    const ok = d.name.trim().length >= 2 && d.phone.trim().length >= 7 &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim()) && d.service && d.date;
+    const bad = Object.keys(rules).filter((n) => !check(form[n]));
     const err = document.getElementById("formError");
-    if (!ok) { err.textContent = t("f.err"); return; }
+    if (bad.length) { err.textContent = t("f.err"); form[bad[0]].focus(); return; }
     err.textContent = "";
 
     const text = [
